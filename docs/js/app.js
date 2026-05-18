@@ -537,5 +537,8 @@ function setupReportBtns() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function setStatus(msg) {
-  document.getElementById('progress-label').textContent = msg;
+  const appStatus = document.getElementById('app-status');
+  if (appStatus) appStatus.textContent = msg;
+  const progLabel = document.getElementById('progress-label');
+  if (progLabel) progLabel.textContent = msg;
 }

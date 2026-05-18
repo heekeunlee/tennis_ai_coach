@@ -1,13 +1,23 @@
 /**
  * pose.js — MediaPipe 초기화, 프레임 추출, 포즈 분석, 스켈레톤 렌더링
  */
-import { PoseLandmarker, FilesetResolver }
-  from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.min.js';
 
+// Dynamic import: MediaPipe CDN이 앱 부트를 막지 않도록 lazy하게 로드
+let PoseLandmarker = null;
+let FilesetResolver = null;
 let landmarker = null;
 
 export async function initMediaPipe(onStatus) {
-  onStatus?.('MediaPipe 모델 로딩 중...');
+  onStatus?.('MediaPipe 모듈 다운로드 중...');
+  try {
+    ({ PoseLandmarker, FilesetResolver } = await import(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.min.js'
+    ));
+  } catch (e) {
+    onStatus?.('MediaPipe 로드 실패: ' + e.message);
+    throw e;
+  }
+  onStatus?.('MediaPipe 모델 초기화 중...');
   const vision = await FilesetResolver.forVisionTasks(
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
   );
@@ -21,7 +31,7 @@ export async function initMediaPipe(onStatus) {
     runningMode: 'IMAGE',
     numPoses: 1,
   });
-  onStatus?.('모델 로드 완료');
+  onStatus?.('✅ 모델 로드 완료 — 영상을 업로드하세요');
   return landmarker;
 }
 
