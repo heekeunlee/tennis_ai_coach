@@ -1,0 +1,33 @@
+# 모델 파일 (첫 실행 시 자동 다운로드)
+models/
+
+# 동영상 파일
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+venv/
+env/
+.venv/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+*.tmp
+*.log
