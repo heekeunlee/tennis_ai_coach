@@ -2,7 +2,7 @@
  * app.js — Main application coordinator
  */
 import { initMediaPipe, extractPoses, analyzePose, comparePhases,
-         makePoseCanvas, makeComparisonCanvas } from './pose.js';
+         makePoseCanvas, makeComparisonCanvas, analyzeTrajectory } from './pose.js';
 import { getInterpretation, generateCoaching, generateRecs,
          METRIC_NAME, METRIC_UNIT, DISPLAY_ORDER } from './coaching.js';
 import { generateCSV, generateMarkdown, downloadText } from './report.js';
@@ -20,6 +20,8 @@ const S = {
   userAnalysis: null,
   proAnalysis:  null,
   comparison:   null,
+  userTrajectory: null,
+  proTrajectory:  null,
   coaching: [],
   recs: [],
   lastResult: null,
@@ -299,12 +301,18 @@ function setupAnalyzeBtn() {
 
 function runAnalysis() {
   const hand = S.dominantHand;
+  const userVideo = document.getElementById('user-video');
+  const proVideo  = document.getElementById('pro-video');
+  const userDuration = userVideo ? userVideo.duration : 1;
+  const proDuration = proVideo ? proVideo.duration : 1;
 
   S.userAnalysis = {};
   PHASES.forEach(ph => {
     const entry = S.userPoses[S.userPhaseIdx[ph]];
     S.userAnalysis[ph] = analyzePose(entry, hand);
   });
+
+  S.userTrajectory = analyzeTrajectory(S.userPoses, hand, userDuration);
 
   if (S.mode === 'comparison' && S.proPoses) {
     S.proAnalysis = {};
@@ -315,9 +323,11 @@ function runAnalysis() {
     S.comparison = comparePhases(S.userAnalysis, S.proAnalysis);
     S.coaching   = generateCoaching(S.comparison.topDifferences);
     S.recs       = generateRecs(S.comparison.topDifferences);
+    S.proTrajectory  = analyzeTrajectory(S.proPoses, hand, proDuration);
   } else {
     S.proAnalysis = null;
     S.comparison  = null;
+    S.proTrajectory  = null;
     S.coaching    = [];
     S.recs        = [];
   }
@@ -325,6 +335,7 @@ function runAnalysis() {
   S.lastResult = {
     userAnalysis: S.userAnalysis, proAnalysis: S.proAnalysis,
     comparison: S.comparison, stroke: S.stroke, dominantHand: hand,
+    userTrajectory: S.userTrajectory, proTrajectory: S.proTrajectory,
   };
 
   renderResults();
@@ -368,6 +379,80 @@ function renderResults() {
 
     if (S.coaching.length) grid.appendChild(makeListCard('🎯 주요 코칭 포인트', S.coaching, 'tip-item'));
     if (S.recs.length)     grid.appendChild(makeListCard('💡 개선 권고사항',   S.recs,     'rec-item'));
+  }
+
+  // ── Option A: Swing Trajectory & Speed Analysis Card
+  if (S.userTrajectory) {
+    const trajCard = document.createElement('div');
+    trajCard.className = 'section-card trajectory-card';
+    trajCard.style.padding = '20px';
+    trajCard.style.marginBottom = '20px';
+    trajCard.innerHTML = `
+      <div class="section-title">📈 스윙 궤적 및 속도 정밀 분석 (Option A)</div>
+      <p style="font-size:.85rem;color:#666;margin-bottom:18px">
+        전체 12개 스윙 프레임에서 손목의 공간 좌표 Trail과 프레임 간 속도 변화(템포)를 프로 선수와 겹쳐서 비교 분석합니다.
+      </p>
+    `;
+
+    const trajGrid = document.createElement('div');
+    trajGrid.className = 'traj-visual-grid';
+    trajGrid.style.display = 'grid';
+    trajGrid.style.gridTemplateColumns = window.innerWidth > 768 ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr';
+    trajGrid.style.gap = '20px';
+
+    // 1. User Trajectory Col
+    const userCol = document.createElement('div');
+    userCol.style.display = 'flex';
+    userCol.style.flexDirection = 'column';
+    userCol.style.gap = '6px';
+    userCol.innerHTML = `<span style="font-size:.88rem;font-weight:bold;color:#444">🎾 나의 스윙 궤적 (Trail)</span>`;
+    const userCanvas = document.createElement('canvas');
+    userCanvas.style.width = '100%';
+    userCanvas.style.borderRadius = '8px';
+    userCanvas.style.backgroundColor = '#000';
+    userCol.appendChild(userCanvas);
+    trajGrid.appendChild(userCol);
+
+    // 2. Pro Trajectory Col (Only in comparison mode)
+    if (isComp && S.proTrajectory) {
+      const proCol = document.createElement('div');
+      proCol.style.display = 'flex';
+      proCol.style.flexDirection = 'column';
+      proCol.style.gap = '6px';
+      proCol.innerHTML = `<span style="font-size:.88rem;font-weight:bold;color:#444">⭐ 롤모델 스윙 궤적 (Trail)</span>`;
+      const proCanvas = document.createElement('canvas');
+      proCanvas.style.width = '100%';
+      proCanvas.style.borderRadius = '8px';
+      proCanvas.style.backgroundColor = '#000';
+      proCol.appendChild(proCanvas);
+      trajGrid.appendChild(proCol);
+
+      setTimeout(() => {
+        drawTrajectoryCanvas(proCanvas, S.proPoses, S.proTrajectory, '#0078d4', '롤모델');
+      }, 50);
+    }
+
+    // 3. Speed Profile Chart Col
+    const speedCol = document.createElement('div');
+    speedCol.style.display = 'flex';
+    speedCol.style.flexDirection = 'column';
+    speedCol.style.gap = '6px';
+    speedCol.innerHTML = `<span style="font-size:.88rem;font-weight:bold;color:#444">⚡ 스윙 속도 프로파일 (템포 분석)</span>`;
+    const speedCanvas = document.createElement('canvas');
+    speedCanvas.style.width = '100%';
+    speedCanvas.style.height = '240px';
+    speedCanvas.style.borderRadius = '8px';
+    speedCol.appendChild(speedCanvas);
+    trajGrid.appendChild(speedCol);
+
+    trajCard.appendChild(trajGrid);
+    body.appendChild(trajCard);
+
+    // Deferred drawing to allow layouts to resolve widths
+    setTimeout(() => {
+      drawTrajectoryCanvas(userCanvas, S.userPoses, S.userTrajectory, '#ff8c00', '나의 스윙');
+      drawSpeedChart(speedCanvas, S.userTrajectory, S.proTrajectory);
+    }, 50);
   }
 
   // ── Phase accordions
@@ -532,6 +617,187 @@ function setupReportBtns() {
     const md = generateMarkdown(S.lastResult, S.coaching, S.recs, S.mode);
     downloadText(md, 'tennis_analysis.md', 'text/markdown;charset=utf-8');
   });
+}
+
+// ── Trajectory & Chart Helpers ────────────────────────────────────────────────
+
+function drawTrajectoryCanvas(canvas, poses, trajectory, jointColor, label) {
+  if (!trajectory || !poses || poses.length === 0) return;
+  const impactIdx = S.userPhaseIdx?.impact ?? 0;
+  const entry = poses[impactIdx] || poses[Math.round(poses.length / 2)] || poses[0];
+  const src = entry?.thumb;
+  if (!src) return;
+
+  canvas.width = src.width;
+  canvas.height = src.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(src, 0, 0);
+
+  const pts = trajectory.points;
+  if (pts.length < 2) return;
+
+  // 1. Draw glowing swing path line
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = jointColor;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = jointColor;
+
+  ctx.beginPath();
+  let first = true;
+  pts.forEach(p => {
+    if (p) {
+      const px = p.x * canvas.width;
+      const py = p.y * canvas.height;
+      if (first) {
+        ctx.moveTo(px, py);
+        first = false;
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+  });
+  ctx.stroke();
+
+  // 2. Draw dots on each frame and highlight Peak Speed
+  ctx.shadowBlur = 0;
+  const maxSpeed = Math.max(...trajectory.speeds);
+  pts.forEach((p, idx) => {
+    if (!p) return;
+    const px = p.x * canvas.width;
+    const py = p.y * canvas.height;
+    const speed = trajectory.speeds[idx];
+    const isPeak = speed === maxSpeed;
+
+    ctx.beginPath();
+    ctx.arc(px, py, isPeak ? 8 : 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = isPeak ? '#e74c3c' : '#ffffff';
+    ctx.strokeStyle = jointColor;
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Frame numbering inside dot
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillStyle = isPeak ? '#ffffff' : '#333333';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${idx + 1}`, px, py);
+
+    if (isPeak) {
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillStyle = '#e74c3c';
+      ctx.textAlign = 'left';
+      ctx.fillText('⚡ 최대 가속', px + 12, py - 4);
+    }
+  });
+
+  // Label at top left
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText(label, 14, 28);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, 13, 27);
+}
+
+function drawSpeedChart(canvas, userTraj, proTraj) {
+  // Account for CSS container bounds
+  canvas.width = canvas.parentElement.clientWidth || 400;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+
+  // Chart Background with border radius
+  ctx.fillStyle = '#fbfcfd';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Guidelines
+  ctx.strokeStyle = '#e9ecef';
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 3; i++) {
+    const y = (canvas.height - 60) * (i / 4) + 25;
+    ctx.beginPath();
+    ctx.moveTo(40, y);
+    ctx.lineTo(canvas.width - 20, y);
+    ctx.stroke();
+  }
+
+  const allSpeeds = [...userTraj.speeds, ...(proTraj ? proTraj.speeds : [])];
+  const maxVal = Math.max(...allSpeeds, 1.0);
+  const scaleY = (canvas.height - 70) / maxVal;
+
+  const drawLine = (trajectory, color, label) => {
+    if (!trajectory) return;
+    const speeds = trajectory.speeds;
+    const stepX = (canvas.width - 65) / (speeds.length - 1);
+    const pts = speeds.map((s, idx) => ({
+      x: 40 + idx * stepX,
+      y: canvas.height - 35 - s * scaleY
+    }));
+
+    // Area Fill
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, color + '44');
+    grad.addColorStop(1, color + '00');
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, canvas.height - 35);
+    pts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts[pts.length - 1].x, canvas.height - 35);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Curved Spline line
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const xc = (pts[i].x + pts[i + 1].x) / 2;
+      const yc = (pts[i].y + pts[i + 1].y) / 2;
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    // Peak Speed Marker
+    const peakIdx = speeds.indexOf(Math.max(...speeds));
+    const peakPt = pts[peakIdx];
+    ctx.beginPath();
+    ctx.arc(peakPt.x, peakPt.y, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Peak Text
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillStyle = '#2c3e50';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${label} Peak (${speeds[peakIdx].toFixed(1)})`, peakPt.x, peakPt.y - 12);
+  };
+
+  if (proTraj) drawLine(proTraj, '#0078d4', '프로');
+  drawLine(userTraj, '#ff8c00', '나');
+
+  // Axes Labels
+  ctx.fillStyle = '#7f8c8d';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  const stepX = (canvas.width - 65) / (userTraj.speeds.length - 1);
+  for (let i = 0; i < userTraj.speeds.length; i++) {
+    const x = 40 + i * stepX;
+    ctx.fillText(`#${i + 1}`, x, canvas.height - 12);
+  }
+
+  // Y Axis unit indicator
+  ctx.save();
+  ctx.translate(14, canvas.height / 2 - 10);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('속도 (화면 비율/초)', 0, 0);
+  ctx.restore();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

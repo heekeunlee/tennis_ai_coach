@@ -7,6 +7,46 @@ let PoseLandmarker = null;
 let FilesetResolver = null;
 let landmarker = null;
 
+export function analyzeTrajectory(poses, dominantHand = 'right', duration = 1) {
+  if (!poses || poses.length < 2) return null;
+  const wristIdx = dominantHand === 'right' ? 16 : 15;
+  const dt = duration / (poses.length - 1);
+
+  const points = [];
+  poses.forEach((p, i) => {
+    const lm = p.landmarks?.[wristIdx];
+    if (lm) {
+      points.push({ x: lm.x, y: lm.y, time: p.time, index: i });
+    } else {
+      points.push(null);
+    }
+  });
+
+  // 속도(Speed) 및 가속도(Acceleration) 산출
+  const speeds = [];
+  for (let i = 0; i < poses.length; i++) {
+    if (i === 0) {
+      speeds.push(0);
+    } else {
+      const p1 = points[i - 1];
+      const p2 = points[i];
+      if (p1 && p2) {
+        const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        speeds.push(dist / dt); // 초당 화면 이동 비율
+      } else {
+        speeds.push(speeds[i - 1] ?? 0);
+      }
+    }
+  }
+
+  const accelerations = [0];
+  for (let i = 1; i < speeds.length; i++) {
+    accelerations.push((speeds[i] - speeds[i - 1]) / dt);
+  }
+
+  return { points, speeds, accelerations };
+}
+
 export async function initMediaPipe(onStatus) {
   onStatus?.('MediaPipe 모듈 다운로드 중...');
   try {
