@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a3a5c">
+  <title>🎾 Tennis AI Coach</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div>
+      <h1>🎾 Tennis AI Coach</h1>
+      <p class="subtitle">AI 테니스 자세 분석 · MediaPipe 기반</p>
+    </div>
+    <button class="settings-toggle" id="settings-toggle" aria-label="설정">⚙️</button>
+  </div>
+</header>
+
+<!-- Settings Panel -->
+<section class="settings-panel" id="settings-panel">
+  <div class="settings-grid">
+    <div class="sg">
+      <label>분석 모드</label>
+      <select id="sel-mode">
+        <option value="solo">🏃 단독 분석</option>
+        <option value="comparison">🆚 롤모델 비교</option>
+      </select>
+    </div>
+    <div class="sg">
+      <label>스트로크</label>
+      <select id="sel-stroke">
+        <option value="forehand">포핸드</option>
+        <option value="backhand">백핸드</option>
+      </select>
+    </div>
+    <div class="sg">
+      <label>주 사용 손</label>
+      <select id="sel-hand">
+        <option value="right">오른손잡이</option>
+        <option value="left">왼손잡이</option>
+      </select>
+    </div>
+    <div class="sg">
+      <label>촬영 방향</label>
+      <select id="sel-camera">
+        <option value="side">측면 (권장)</option>
+        <option value="front">정면/후면</option>
+      </select>
+    </div>
+  </div>
+  <div class="warn-bar" id="camera-warn" style="display:none">
+    ⚠️ 정면/후면 촬영은 측면 촬영보다 관절 각도 정확도가 낮을 수 있습니다.
+  </div>
+</section>
+
+<!-- Tab Nav -->
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="upload">📹 업로드</button>
+  <button class="tab-btn" data-tab="frames">🎯 프레임</button>
+  <button class="tab-btn" data-tab="results">📊 결과</button>
+  <button class="tab-btn" data-tab="report">📥 보고서</button>
+</nav>
+
+<main class="tab-body">
+
+  <!-- TAB 1: Upload -->
+  <section class="tab-pane active" id="tab-upload">
+    <div class="upload-grid" id="upload-grid">
+      <div class="upload-card">
+        <h3>나의 스윙 영상</h3>
+        <div class="drop-zone" id="user-drop">
+          <span class="drop-icon">📹</span>
+          <p>클릭하거나 드래그하여 업로드</p>
+          <p class="muted">MP4 · MOV · AVI · MKV</p>
+          <input type="file" id="user-file" accept="video/*">
+        </div>
+        <video id="user-video" controls playsinline muted></video>
+      </div>
+      <div class="upload-card" id="pro-card" style="display:none">
+        <h3>롤모델 영상</h3>
+        <div class="drop-zone" id="pro-drop">
+          <span class="drop-icon">⭐</span>
+          <p>클릭하거나 드래그하여 업로드</p>
+          <p class="muted">MP4 · MOV · AVI · MKV</p>
+          <input type="file" id="pro-file" accept="video/*">
+        </div>
+        <video id="pro-video" controls playsinline muted></video>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button id="process-btn" class="btn btn-primary btn-lg" disabled>🔍 영상 처리 시작</button>
+    </div>
+
+    <div id="process-progress" style="display:none">
+      <p id="progress-label" class="muted">처리 중...</p>
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+    </div>
+  </section>
+
+  <!-- TAB 2: Frames -->
+  <section class="tab-pane" id="tab-frames">
+    <div id="frames-ph" class="ph-msg">먼저 <strong>업로드</strong> 탭에서 영상을 처리해주세요.</div>
+    <div id="frames-body" style="display:none">
+      <p class="muted" style="margin-bottom:12px">슬라이더로 각 단계의 대표 프레임을 선택하세요.</p>
+      <div id="phase-selectors"></div>
+      <div class="action-bar">
+        <button id="analyze-btn" class="btn btn-primary btn-lg">📊 분석 시작</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: Results -->
+  <section class="tab-pane" id="tab-results">
+    <div id="results-ph" class="ph-msg">분석을 완료하면 여기에 결과가 표시됩니다.</div>
+    <div id="results-body" style="display:none"></div>
+  </section>
+
+  <!-- TAB 4: Report -->
+  <section class="tab-pane" id="tab-report">
+    <div id="report-ph" class="ph-msg">분석을 완료하면 보고서를 다운로드할 수 있습니다.</div>
+    <div id="report-body" style="display:none">
+      <h2 style="margin-bottom:16px">📥 분석 보고서 다운로드</h2>
+      <div class="dl-grid">
+        <div class="dl-card">
+          <h3>📊 CSV 보고서</h3>
+          <p>Excel에서 열 수 있는 데이터 표</p>
+          <button id="dl-csv" class="btn btn-secondary">⬇️ CSV 다운로드</button>
+        </div>
+        <div class="dl-card">
+          <h3>📄 Markdown 보고서</h3>
+          <p>Notion · Obsidian 에서 열 수 있는 문서</p>
+          <button id="dl-md" class="btn btn-secondary">⬇️ Markdown 다운로드</button>
+        </div>
+      </div>
+      <div id="report-preview"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  Tennis AI Coach &nbsp;|&nbsp; MediaPipe JavaScript &nbsp;|&nbsp;
+  <a href="https://github.com/heekeunlee/tennis_ai_coach" target="_blank">GitHub</a>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
