@@ -11,7 +11,7 @@ export async function initMediaPipe(onStatus) {
   onStatus?.('MediaPipe 모듈 다운로드 중...');
   try {
     ({ PoseLandmarker, FilesetResolver } = await import(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.min.js'
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs'
     ));
   } catch (e) {
     onStatus?.('MediaPipe 로드 실패: ' + e.message);
