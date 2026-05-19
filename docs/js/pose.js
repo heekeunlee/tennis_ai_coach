@@ -10,19 +10,57 @@ let landmarker = null;
 export function analyzeTrajectory(poses, dominantHand = 'right', duration = 1) {
   if (!poses || poses.length < 2) return null;
   const wristIdx = dominantHand === 'right' ? 16 : 15;
-  const dt = duration / (poses.length - 1);
+
+  // 비디오 duration이 유효하지 않을 때의 방어 로직
+  const safeDuration = duration > 0 && !isNaN(duration) ? duration : 1.2;
+  const dt = safeDuration / (poses.length - 1);
 
   const points = [];
   poses.forEach((p, i) => {
     const lm = p.landmarks?.[wristIdx];
-    if (lm) {
+    // 랜드마크 신뢰도가 일정 수준 이상인 경우만 유효 처리
+    if (lm && (lm.visibility === undefined || lm.visibility > 0.25)) {
       points.push({ x: lm.x, y: lm.y, time: p.time, index: i });
     } else {
       points.push(null);
     }
   });
 
-  // 속도(Speed) 및 가속도(Acceleration) 산출
+  // 1. 손목 유실 포인트에 대한 선형 보간 (Linear Interpolation) 적용
+  for (let i = 0; i < points.length; i++) {
+    if (points[i] === null) {
+      // 이전의 정상 탐지된 점 탐색
+      let prev = null;
+      for (let j = i - 1; j >= 0; j--) {
+        if (points[j] !== null) { prev = points[j]; break; }
+      }
+      // 이후의 정상 탐지된 점 탐색
+      let next = null;
+      for (let j = i + 1; j < points.length; j++) {
+        if (points[j] !== null) { next = points[j]; break; }
+      }
+
+      if (prev && next) {
+        const ratio = (i - prev.index) / (next.index - prev.index);
+        points[i] = {
+          x: prev.x + (next.x - prev.x) * ratio,
+          y: prev.y + (next.y - prev.y) * ratio,
+          time: prev.time + (next.time - prev.time) * ratio,
+          index: i,
+          isInterpolated: true
+        };
+      } else if (prev) {
+        points[i] = { ...prev, index: i, isInterpolated: true };
+      } else if (next) {
+        points[i] = { ...next, index: i, isInterpolated: true };
+      } else {
+        // 극한의 미검출 상황: 화면 중심 기준의 가상 점 부여로 렌더링 폭사 방지
+        points[i] = { x: 0.5, y: 0.6 - (i * 0.02), time: i * dt, index: i, isInterpolated: true };
+      }
+    }
+  }
+
+  // 2. 속도(Speed) 및 가속도(Acceleration) 계산 (NaN 철저 예방)
   const speeds = [];
   for (let i = 0; i < poses.length; i++) {
     if (i === 0) {
@@ -30,18 +68,16 @@ export function analyzeTrajectory(poses, dominantHand = 'right', duration = 1) {
     } else {
       const p1 = points[i - 1];
       const p2 = points[i];
-      if (p1 && p2) {
-        const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-        speeds.push(dist / dt); // 초당 화면 이동 비율
-      } else {
-        speeds.push(speeds[i - 1] ?? 0);
-      }
+      const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+      const safeDt = dt > 0 && !isNaN(dt) ? dt : 0.1;
+      speeds.push(dist / safeDt);
     }
   }
 
   const accelerations = [0];
   for (let i = 1; i < speeds.length; i++) {
-    accelerations.push((speeds[i] - speeds[i - 1]) / dt);
+    const safeDt = dt > 0 && !isNaN(dt) ? dt : 0.1;
+    accelerations.push((speeds[i] - speeds[i - 1]) / safeDt);
   }
 
   return { points, speeds, accelerations };

@@ -303,8 +303,8 @@ function runAnalysis() {
   const hand = S.dominantHand;
   const userVideo = document.getElementById('user-video');
   const proVideo  = document.getElementById('pro-video');
-  const userDuration = userVideo ? userVideo.duration : 1;
-  const proDuration = proVideo ? proVideo.duration : 1;
+  const userDuration = userVideo && !isNaN(userVideo.duration) && userVideo.duration > 0 ? userVideo.duration : 1.2;
+  const proDuration = proVideo && !isNaN(proVideo.duration) && proVideo.duration > 0 ? proVideo.duration : 1.2;
 
   S.userAnalysis = {};
   PHASES.forEach(ph => {
@@ -628,8 +628,8 @@ function drawTrajectoryCanvas(canvas, poses, trajectory, jointColor, label) {
   const src = entry?.thumb;
   if (!src) return;
 
-  canvas.width = src.width;
-  canvas.height = src.height;
+  canvas.width = src.width || 520;
+  canvas.height = src.height || 360;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(src, 0, 0);
 
@@ -724,7 +724,8 @@ function drawSpeedChart(canvas, userTraj, proTraj) {
   }
 
   const allSpeeds = [...userTraj.speeds, ...(proTraj ? proTraj.speeds : [])];
-  const maxVal = Math.max(...allSpeeds, 1.0);
+  const validSpeeds = allSpeeds.filter(s => typeof s === 'number' && !isNaN(s));
+  const maxVal = Math.max(...validSpeeds, 1.0) || 1.0;
   const scaleY = (canvas.height - 70) / maxVal;
 
   const drawLine = (trajectory, color, label) => {
